@@ -599,16 +599,21 @@ void incrDecrCommand(client *c, long long incr) {
     long long value, oldvalue;
     robj *o, *new;
 
-    o = lookupKeyWrite(c->db,c->argv[1]);
+    o = lookupKeyWrite(c->db,c->argv[1]);  // 拿到key对应的redisObject
     if (checkType(c,o,OBJ_STRING)) return;
+
+    // 从redisObject拿到值赋值给变量 value
     if (getLongLongFromObjectOrReply(c,o,&value,NULL) != C_OK) return;
 
     oldvalue = value;
+    // incr不能越界
     if ((incr < 0 && oldvalue < 0 && incr < (LLONG_MIN-oldvalue)) ||
         (incr > 0 && oldvalue > 0 && incr > (LLONG_MAX-oldvalue))) {
         addReplyError(c,"increment or decrement would overflow");
         return;
     }
+
+    // 执行相加
     value += incr;
 
     if (o && o->refcount == 1 && o->encoding == OBJ_ENCODING_INT &&
@@ -618,16 +623,21 @@ void incrDecrCommand(client *c, long long incr) {
         new = o;
         o->ptr = (void*)((long)value);
     } else {
+        // 新创建一个字符串对象
         new = createStringObjectFromLongLongForValue(value);
         if (o) {
-            dbReplaceValue(c->db,c->argv[1],new);
+            dbReplaceValue(c->db,c->argv[1],new);  // 重写
         } else {
-            dbAdd(c->db,c->argv[1],new);
+            dbAdd(c->db,c->argv[1],new);  // 新增 k-v
         }
     }
+
+    // 键值改动后发送信号
     signalModifiedKey(c,c->db,c->argv[1]);
+    // 发送"incrby"事件通知
     notifyKeyspaceEvent(NOTIFY_STRING,"incrby",c->argv[1],c->db->id);
     server.dirty++;
+    // 返回给client信息
     addReplyLongLong(c, value);
 }
 
